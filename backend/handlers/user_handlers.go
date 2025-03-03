@@ -17,10 +17,10 @@ import (
 
 type UserHandlers struct {
     userService *services.UserService
-    cacheService *services.CacheService
+    cacheService services.CacheServiceInterface
 }
 
-func NewUserHandlers(userService *services.UserService, cacheService *services.CacheService) *UserHandlers {
+func NewUserHandlers(userService *services.UserService, cacheService services.CacheServiceInterface) *UserHandlers {
     return &UserHandlers{userService: userService, cacheService: cacheService}
 }
 
