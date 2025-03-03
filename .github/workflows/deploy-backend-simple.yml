@@ -27,7 +27,7 @@ jobs:
           # Make the script executable
           chmod +x deploy-vm.sh
           # Run the script (replace with your script's path)
-          ./deploy-vm.sh
+          ./deploy-to-vm.sh
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           INSTANCE_NAME: crowdfund-backend-vm
