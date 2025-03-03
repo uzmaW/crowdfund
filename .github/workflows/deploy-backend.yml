@@ -15,6 +15,12 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: crowdfund-backend
   REGION: us-central1
+  # Development database configuration - DO NOT use for production!
+  POSTGRES_USER: postgres
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: crowdfund
+  # Note: Sensitive values like POSTGRES_PASSWORD and JWT_SECRET should still use secrets
 
 jobs:
   build-and-deploy:
@@ -60,11 +66,11 @@ jobs:
         region: ${{ env.REGION }}
         image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
         env_vars: |
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_USER=${{ env.POSTGRES_USER }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
-          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_HOST=${{ env.POSTGRES_HOST }}
+          POSTGRES_PORT=${{ env.POSTGRES_PORT }}
+          POSTGRES_DB=${{ env.POSTGRES_DB }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}
           
     - name: Show Output
