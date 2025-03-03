@@ -10,6 +10,9 @@ IMAGE_PROJECT="debian-cloud"
 DISK_SIZE="10GB"
 TAGS="http-server"
 
+gcloud compute instances delete $INSTANCE_NAME  --zone=$ZONE --quiet
+gcloud compute firewall-rules delete allow-http --quiet
+
 # Deploy VM
 gcloud compute instances create $INSTANCE_NAME \
   --zone=$ZONE \
