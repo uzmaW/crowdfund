@@ -43,21 +43,24 @@ jobs:
       run: |
         cd backend
         go build -o crowdfund-backend
-        
-    - name: Set up Cloud SDK
-      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
-      uses: 'google-github-actions/setup-gcloud@v1'
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        
+
     - name: Authenticate to Google Cloud
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       uses: 'google-github-actions/auth@v1'
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
-        service_account: 'crowdfund-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
-        create_credentials_file: true
-        export_environment_variables: true
+      #   service_account: 'crowdfund-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+      #  create_credentials_file: true
+        export_environment_variables: true    
+
+    - name: Set up Cloud SDK
+      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      uses: 'google-github-actions/setup-gcloud@v1'
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}    
+ 
+        
+
         
     - name: Create .env file
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
