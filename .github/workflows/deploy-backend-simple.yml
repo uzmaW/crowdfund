@@ -55,6 +55,9 @@ jobs:
       uses: 'google-github-actions/auth@v1'
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
+        service_account: 'crowdfund-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+        create_credentials_file: true
+        export_environment_variables: true
         
     - name: Create .env file
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
@@ -83,37 +86,31 @@ jobs:
             --boot-disk-size=20GB \
             --tags=http-server,https-server
             
-          # Allow HTTP/HTTPS traffic
-          gcloud compute firewall-rules create allow-http \
-            --allow tcp:80 \
-            --target-tags=http-server \
-            --description="Allow HTTP traffic" || true
+          # Wait for VM to be ready
+          echo "Waiting for VM to be ready..."
+          sleep 30
           
-          gcloud compute firewall-rules create allow-https \
-            --allow tcp:443 \
-            --target-tags=https-server \
-            --description="Allow HTTPS traffic" || true
-          
-          # Allow custom port for Go backend
-          gcloud compute firewall-rules create allow-go-backend \
-            --allow tcp:8080 \
-            --target-tags=http-server \
-            --description="Allow Go backend traffic" || true
-            
           # Install PostgreSQL on the VM
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="
-            sudo apt-get update
-            sudo apt-get install -y postgresql postgresql-contrib
-            sudo systemctl start postgresql
-            sudo systemctl enable postgresql
-            
-            # Create database and user if they don't exist
-            sudo -u postgres psql -c \"CREATE DATABASE ${{ env.POSTGRES_DB }}\" || true
-            sudo -u postgres psql -c \"CREATE USER ${{ env.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}'\" || true
-            sudo -u postgres psql -c \"ALTER ROLE ${{ env.POSTGRES_USER }} WITH SUPERUSER\" || true
-          "
+          echo "Installing PostgreSQL on the VM..."
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib"
+          
+          # Configure PostgreSQL
+          echo "Configuring PostgreSQL..."
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"ALTER USER postgres WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';\""
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"CREATE DATABASE crowdfund;\""
+          
+          # Configure PostgreSQL to accept connections from anywhere
+          echo "Configuring PostgreSQL to accept connections..."
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo sed -i \"s/#listen_addresses = 'localhost'/listen_addresses = '*'/\" /etc/postgresql/*/main/postgresql.conf"
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo bash -c 'echo \"host all all 0.0.0.0/0 md5\" >> /etc/postgresql/*/main/pg_hba.conf'"
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo systemctl restart postgresql"
+          
+          # Set up firewall rules
+          echo "Setting up firewall rules..."
+          gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server
+          gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server
         else
-          echo "VM already exists."
+          echo "VM already exists. Skipping creation."
         fi
         
     - name: Deploy to VM instance
@@ -123,54 +120,24 @@ jobs:
         cd backend
         tar -czf ../deploy.tar.gz crowdfund-backend .env
         
-        # Copy files to the VM
+        # Copy files to VM
         gcloud compute scp ../deploy.tar.gz ${{ env.INSTANCE_NAME }}:~ --zone=${{ env.ZONE }}
         
-        # SSH into the VM and deploy
+        # Deploy on VM
         gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="
-          # Extract the deployment package
-          tar -xzf deploy.tar.gz -C /tmp
+          # Extract files
+          tar -xzf deploy.tar.gz -C ~/ && 
           
-          # Stop the existing service if it's running
-          sudo systemctl stop crowdfund-backend.service || true
+          # Stop existing application if running
+          pkill -f crowdfund-backend || true && 
           
-          # Move the files to the deployment directory
-          sudo mkdir -p /opt/crowdfund
-          sudo cp /tmp/crowdfund-backend /opt/crowdfund/
-          sudo cp /tmp/.env /opt/crowdfund/
-          sudo chmod +x /opt/crowdfund/crowdfund-backend
+          # Start the application in the background
+          nohup ./crowdfund-backend > app.log 2>&1 &
           
-          # Create or update the systemd service
-          cat > /tmp/crowdfund-backend.service << 'EOF'
-          [Unit]
-          Description=Crowdfund Backend Service
-          After=network.target
-          
-          [Service]
-          Type=simple
-          User=root
-          WorkingDirectory=/opt/crowdfund
-          EnvironmentFile=/opt/crowdfund/.env
-          ExecStart=/opt/crowdfund/crowdfund-backend
-          Restart=always
-          RestartSec=5
-          
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-          
-          sudo mv /tmp/crowdfund-backend.service /etc/systemd/system/
-          sudo systemctl daemon-reload
-          sudo systemctl enable crowdfund-backend.service
-          sudo systemctl start crowdfund-backend.service
-          
-          # Clean up
-          rm deploy.tar.gz
+          # Show confirmation
+          echo 'Deployment completed successfully!'
         "
         
-    - name: Show deployment info
-      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
-      run: |
-        echo "Backend deployed to VM: ${{ env.INSTANCE_NAME }}"
+        # Get the external IP of the VM
         EXTERNAL_IP=$(gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-        echo "External IP: $EXTERNAL_IP"
+        echo "Application deployed to: http://$EXTERNAL_IP:8080"
