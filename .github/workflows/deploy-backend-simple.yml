@@ -69,6 +69,53 @@ jobs:
         JWT_SECRET=${{ secrets.JWT_SECRET }}
         EOF
         
+    - name: Check if VM exists and create if needed
+      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      run: |
+        # Check if VM exists
+        if ! gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null; then
+          echo "VM does not exist. Creating..."
+          gcloud compute instances create ${{ env.INSTANCE_NAME }} \
+            --zone=${{ env.ZONE }} \
+            --machine-type=e2-medium \
+            --image-family=debian-12 \
+            --image-project=debian-cloud \
+            --boot-disk-size=20GB \
+            --tags=http-server,https-server
+            
+          # Allow HTTP/HTTPS traffic
+          gcloud compute firewall-rules create allow-http \
+            --allow tcp:80 \
+            --target-tags=http-server \
+            --description="Allow HTTP traffic" || true
+          
+          gcloud compute firewall-rules create allow-https \
+            --allow tcp:443 \
+            --target-tags=https-server \
+            --description="Allow HTTPS traffic" || true
+          
+          # Allow custom port for Go backend
+          gcloud compute firewall-rules create allow-go-backend \
+            --allow tcp:8080 \
+            --target-tags=http-server \
+            --description="Allow Go backend traffic" || true
+            
+          # Install PostgreSQL on the VM
+          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="
+            sudo apt-get update
+            sudo apt-get install -y postgresql postgresql-contrib
+            sudo systemctl start postgresql
+            sudo systemctl enable postgresql
+            
+            # Create database and user if they don't exist
+            sudo -u postgres psql -c \"CREATE DATABASE ${{ env.POSTGRES_DB }}\" || true
+            sudo -u postgres psql -c \"CREATE USER ${{ env.POSTGRES_USER }} WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}'\" || true
+            sudo -u postgres psql -c \"ALTER ROLE ${{ env.POSTGRES_USER }} WITH SUPERUSER\" || true
+          "
+        else
+          echo "VM already exists."
+        fi
+        
     - name: Deploy to VM instance
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       run: |
