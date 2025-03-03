@@ -72,50 +72,57 @@ jobs:
         JWT_SECRET=${{ secrets.JWT_SECRET }}
         EOF
         
-    - name: Check if VM exists and create if needed
+    - name: Debug environment
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       run: |
-        # Check if VM exists
-        echo "Checking if VM exists..."
-        VM_EXISTS=0
-        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null || VM_EXISTS=$?
+        echo "Project ID: ${{ env.PROJECT_ID }}"
+        echo "Instance Name: ${{ env.INSTANCE_NAME }}"
+        echo "Zone: ${{ env.ZONE }}"
+        gcloud config list
+        gcloud auth list
         
-        if [ $VM_EXISTS -ne 0 ]; then
-          echo "VM does not exist. Creating..."
-          gcloud compute instances create ${{ env.INSTANCE_NAME }} \
-            --zone=${{ env.ZONE }} \
-            --machine-type=e2-medium \
-            --image-family=debian-12 \
-            --image-project=debian-cloud \
-            --boot-disk-size=20GB \
-            --tags=http-server,https-server
-            
-          # Wait for VM to be ready
-          echo "Waiting for VM to be ready..."
-          sleep 60
-          
-          # Install PostgreSQL on the VM
-          echo "Installing PostgreSQL on the VM..."
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib"
-          
-          # Configure PostgreSQL
-          echo "Configuring PostgreSQL..."
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"ALTER USER postgres WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';\""
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"CREATE DATABASE crowdfund;\""
-          
-          # Configure PostgreSQL to accept connections from anywhere
-          echo "Configuring PostgreSQL to accept connections..."
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo sed -i \"s/#listen_addresses = 'localhost'/listen_addresses = '*'/\" /etc/postgresql/*/main/postgresql.conf"
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo bash -c 'echo \"host all all 0.0.0.0/0 md5\" >> /etc/postgresql/*/main/pg_hba.conf'"
-          gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo systemctl restart postgresql"
-          
-          # Set up firewall rules
-          echo "Setting up firewall rules..."
-          gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server || echo "Firewall rule already exists"
-          gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server || echo "Firewall rule already exists"
-        else
-          echo "VM already exists. Skipping creation."
-        fi
+    - name: Create VM instance
+      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      run: |
+        echo "Creating VM instance..."
+        # Force create the VM (ignore if it already exists)
+        gcloud compute instances create ${{ env.INSTANCE_NAME }} \
+          --zone=${{ env.ZONE }} \
+          --machine-type=e2-medium \
+          --image-family=debian-12 \
+          --image-project=debian-cloud \
+          --boot-disk-size=20GB \
+          --tags=http-server,https-server || echo "VM may already exist, continuing..."
+        
+        # Wait for VM to be ready
+        echo "Waiting for VM to be ready..."
+        sleep 60
+        
+        # Verify VM exists
+        echo "Verifying VM exists..."
+        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }}
+        
+        # Set up firewall rules
+        echo "Setting up firewall rules..."
+        gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server || echo "Firewall rule already exists"
+        gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server || echo "Firewall rule already exists"
+    
+    - name: Install PostgreSQL
+      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      run: |
+        echo "Installing PostgreSQL on the VM..."
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib"
+        
+        # Configure PostgreSQL
+        echo "Configuring PostgreSQL..."
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"ALTER USER postgres WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';\""
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"CREATE DATABASE crowdfund;\""
+        
+        # Configure PostgreSQL to accept connections from anywhere
+        echo "Configuring PostgreSQL to accept connections..."
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo sed -i \"s/#listen_addresses = 'localhost'/listen_addresses = '*'/\" /etc/postgresql/*/main/postgresql.conf"
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo bash -c 'echo \"host all all 0.0.0.0/0 md5\" >> /etc/postgresql/*/main/pg_hba.conf'"
+        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo systemctl restart postgresql"
         
     - name: Deploy to VM instance
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
@@ -126,10 +133,7 @@ jobs:
         
         # Verify VM exists before attempting to deploy
         echo "Verifying VM exists before deployment..."
-        if ! gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null; then
-          echo "Error: VM instance does not exist. Deployment failed."
-          exit 1
-        fi
+        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }}
         
         # Copy files to VM
         echo "Copying files to VM..."
