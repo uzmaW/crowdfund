@@ -35,4 +35,6 @@ jobs:
       - name: Run Tests with DB
         env:
           DATABASE_URL: "postgres://test:test@localhost:5432/test"
-        run: go test -v ./...
+        run: |
+          cd backend
+          go test -v ./...
