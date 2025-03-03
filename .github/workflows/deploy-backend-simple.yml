@@ -1,4 +1,4 @@
-name: Deploy Go Backend to GCP VM (Simple)
+name: Deploy Go Backend to GCP VM (Debug Version)
 
 on:
   push:
@@ -15,12 +15,11 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   INSTANCE_NAME: crowdfund-backend-vm
   ZONE: us-central1-a
-  # Development database configuration - DO NOT use for production!
+  # Development database configuration
   POSTGRES_USER: postgres
   POSTGRES_HOST: localhost
   POSTGRES_PORT: 5432
   POSTGRES_DB: crowdfund
-  # Note: Sensitive values like POSTGRES_PASSWORD and JWT_SECRET should still use secrets
 
 jobs:
   build-and-deploy:
@@ -43,24 +42,43 @@ jobs:
       run: |
         cd backend
         go build -o crowdfund-backend
-
+    
+    # AUTHENTICATION MUST COME FIRST
     - name: Authenticate to Google Cloud
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      id: auth
       uses: 'google-github-actions/auth@v1'
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      #   service_account: 'crowdfund-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
-      #  create_credentials_file: true
-        export_environment_variables: true    
-
+        export_environment_variables: true
+        create_credentials_file: true
+        
+    # SETUP GCLOUD AFTER AUTHENTICATION
     - name: Set up Cloud SDK
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       uses: 'google-github-actions/setup-gcloud@v1'
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}    
- 
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+    
+    # DEBUGGING STEPS
+    - name: Verify Authentication and Project Configuration
+      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
+      run: |
+        echo "### Debugging GCP Authentication ###"
+        echo "1. Checking authentication status:"
+        gcloud auth list
         
-
+        echo "2. Checking active project:"
+        gcloud config get-value project
+        
+        echo "3. Checking service account permissions:"
+        gcloud projects get-iam-policy ${{ secrets.GCP_PROJECT_ID }} --format=json | grep -B 2 -A 2 $(gcloud config get-value account)
+        
+        echo "4. Checking VM existence:"
+        gcloud compute instances list | grep ${{ env.INSTANCE_NAME }} || echo "VM not found in project"
+        
+        echo "5. Trying to get VM zone-specific info:"
+        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} || echo "Cannot access VM in specified zone"
         
     - name: Create .env file
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
@@ -75,89 +93,77 @@ jobs:
         JWT_SECRET=${{ secrets.JWT_SECRET }}
         EOF
         
-    - name: Debug environment
-      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
-      run: |
-        echo "Project ID: ${{ env.PROJECT_ID }}"
-        echo "Instance Name: ${{ env.INSTANCE_NAME }}"
-        echo "Zone: ${{ env.ZONE }}"
-        gcloud config list
-        gcloud auth list
-        
-    - name: Create VM instance
-      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
-      run: |
-        echo "Creating VM instance..."
-        # Force create the VM (ignore if it already exists)
-        gcloud compute instances create ${{ env.INSTANCE_NAME }} \
-          --zone=${{ env.ZONE }} \
-          --machine-type=e2-medium \
-          --image-family=debian-12 \
-          --image-project=debian-cloud \
-          --boot-disk-size=20GB \
-          --tags=http-server,https-server || echo "VM may already exist, continuing..."
-        
-        # Wait for VM to be ready
-        echo "Waiting for VM to be ready..."
-        sleep 60
-        
-        # Verify VM exists
-        echo "Verifying VM exists..."
-        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }}
-        
-        # Set up firewall rules
-        echo "Setting up firewall rules..."
-        gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server || echo "Firewall rule already exists"
-        gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server || echo "Firewall rule already exists"
-    
-    - name: Install PostgreSQL
-      if: ${{ env.DEPLOY_FROM_PR == 'true' }}
-      run: |
-        echo "Installing PostgreSQL on the VM..."
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib"
-        
-        # Configure PostgreSQL
-        echo "Configuring PostgreSQL..."
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"ALTER USER postgres WITH PASSWORD '${{ secrets.POSTGRES_PASSWORD }}';\""
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo -u postgres psql -c \"CREATE DATABASE crowdfund;\""
-        
-        # Configure PostgreSQL to accept connections from anywhere
-        echo "Configuring PostgreSQL to accept connections..."
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo sed -i \"s/#listen_addresses = 'localhost'/listen_addresses = '*'/\" /etc/postgresql/*/main/postgresql.conf"
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo bash -c 'echo \"host all all 0.0.0.0/0 md5\" >> /etc/postgresql/*/main/pg_hba.conf'"
-        gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="sudo systemctl restart postgresql"
-        
-    - name: Deploy to VM instance
+    - name: Deploy to VM instance with error handling
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       run: |
         # Create a deployment package
         cd backend
         tar -czf ../deploy.tar.gz crowdfund-backend .env
         
-        # Verify VM exists before attempting to deploy
-        echo "Verifying VM exists before deployment..."
-        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }}
+        echo "Attempting to copy files to VM..."
+        # Copy files with explicit error handling
+        if ! gcloud compute scp ../deploy.tar.gz ${{ env.INSTANCE_NAME }}:~ --zone=${{ env.ZONE }}; then
+          echo "SCP FAILED: Could not copy files to VM"
+          echo "Checking if VM exists..."
+          gcloud compute instances list --filter="name=${{ env.INSTANCE_NAME }}"
+          echo "Checking zones..."
+          gcloud compute instances list
+          exit 1
+        fi
         
-        # Copy files to VM
-        echo "Copying files to VM..."
-        gcloud compute scp ../deploy.tar.gz ${{ env.INSTANCE_NAME }}:~ --zone=${{ env.ZONE }}
+        echo "Files copied successfully, attempting to SSH..."
+        # SSH with explicit error handling
+        if ! gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="echo 'SSH connection successful'"; then
+          echo "SSH FAILED: Could not connect to VM"
+          exit 1
+        fi
         
-        # Deploy on VM
-        echo "Deploying application on VM..."
+        echo "SSH connection successful, deploying application..."
+        # Now proceed with the actual deployment
         gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="
-          # Extract files
-          tar -xzf deploy.tar.gz -C ~/ && 
+          # Extract the deployment package
+          tar -xzf deploy.tar.gz -C /tmp
           
-          # Stop existing application if running
-          pkill -f crowdfund-backend || true && 
+          # Stop the existing service if it's running
+          sudo systemctl stop crowdfund-backend.service || true
           
-          # Start the application in the background
-          nohup ./crowdfund-backend > app.log 2>&1 &
+          # Move the files to the deployment directory
+          sudo mkdir -p /opt/crowdfund
+          sudo cp /tmp/crowdfund-backend /opt/crowdfund/
+          sudo cp /tmp/.env /opt/crowdfund/
+          sudo chmod +x /opt/crowdfund/crowdfund-backend
           
-          # Show confirmation
-          echo 'Deployment completed successfully!'
+          # Create or update the systemd service
+          cat > /tmp/crowdfund-backend.service << 'EOF'
+          [Unit]
+          Description=Crowdfund Backend Service
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/crowdfund
+          EnvironmentFile=/opt/crowdfund/.env
+          ExecStart=/opt/crowdfund/crowdfund-backend
+          Restart=always
+          RestartSec=5
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          sudo mv /tmp/crowdfund-backend.service /etc/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable crowdfund-backend.service
+          sudo systemctl start crowdfund-backend.service
+          
+          # Clean up
+          rm deploy.tar.gz
         "
         
-        # Get the external IP of the VM
+    - name: Show deployment info
+      if: ${{ env.DEPLOY_FROM_PR == 'true' && success() }}
+      run: |
+        echo "Backend deployed to VM: ${{ env.INSTANCE_NAME }}"
         EXTERNAL_IP=$(gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-        echo "Application deployed to: http://$EXTERNAL_IP:8080"
+        echo "External IP: $EXTERNAL_IP"
