@@ -1,5 +1,8 @@
 package main
 
+// This is the main entry point for the Crowdfund backend application
+// Updated for automatic workflow testing
+
 import (
 	"context"
 	"crowdfund/backend/handlers"
