@@ -76,7 +76,11 @@ jobs:
       if: ${{ env.DEPLOY_FROM_PR == 'true' }}
       run: |
         # Check if VM exists
-        if ! gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null; then
+        echo "Checking if VM exists..."
+        VM_EXISTS=0
+        gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null || VM_EXISTS=$?
+        
+        if [ $VM_EXISTS -ne 0 ]; then
           echo "VM does not exist. Creating..."
           gcloud compute instances create ${{ env.INSTANCE_NAME }} \
             --zone=${{ env.ZONE }} \
@@ -88,7 +92,7 @@ jobs:
             
           # Wait for VM to be ready
           echo "Waiting for VM to be ready..."
-          sleep 30
+          sleep 60
           
           # Install PostgreSQL on the VM
           echo "Installing PostgreSQL on the VM..."
@@ -107,8 +111,8 @@ jobs:
           
           # Set up firewall rules
           echo "Setting up firewall rules..."
-          gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server
-          gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server
+          gcloud compute firewall-rules create allow-postgres --allow tcp:5432 --target-tags=http-server || echo "Firewall rule already exists"
+          gcloud compute firewall-rules create allow-go-app --allow tcp:8080 --target-tags=http-server || echo "Firewall rule already exists"
         else
           echo "VM already exists. Skipping creation."
         fi
@@ -120,10 +124,19 @@ jobs:
         cd backend
         tar -czf ../deploy.tar.gz crowdfund-backend .env
         
+        # Verify VM exists before attempting to deploy
+        echo "Verifying VM exists before deployment..."
+        if ! gcloud compute instances describe ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} &> /dev/null; then
+          echo "Error: VM instance does not exist. Deployment failed."
+          exit 1
+        fi
+        
         # Copy files to VM
+        echo "Copying files to VM..."
         gcloud compute scp ../deploy.tar.gz ${{ env.INSTANCE_NAME }}:~ --zone=${{ env.ZONE }}
         
         # Deploy on VM
+        echo "Deploying application on VM..."
         gcloud compute ssh ${{ env.INSTANCE_NAME }} --zone=${{ env.ZONE }} --command="
           # Extract files
           tar -xzf deploy.tar.gz -C ~/ && 
