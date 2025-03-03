@@ -22,9 +22,14 @@ gcloud compute instances create $INSTANCE_NAME \
 
 # Open firewall (if needed)
 if [[ $TAGS == *"http-server"* ]]; then
-  gcloud compute firewall-rules create allow-http \
-    --allow=tcp:80 \
-    --source-ranges=0.0.0.0/0 \
-    --target-tags=http-server \
-    --quiet
+  if ! gcloud compute firewall-rules describe allow-http --quiet &> /dev/null; then
+    echo "Creating firewall rule 'allow-http'..."
+    gcloud compute firewall-rules create allow-http \
+      --allow=tcp:80 \
+      --source-ranges=0.0.0.0/0 \
+      --target-tags=http-server \
+      --quiet
+  else
+    echo "Firewall rule 'allow-http' already exists. Skipping creation."
+  fi
 fi
