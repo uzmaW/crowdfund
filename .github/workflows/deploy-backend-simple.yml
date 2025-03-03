@@ -14,6 +14,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}  # JSON key from GitHub Secrets
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Set Up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -25,7 +31,7 @@ jobs:
       - name: Run Deployment Script
         run: |
           # Make the script executable
-          chmod +x deploy-vm.sh
+          chmod +x deploy-to-vm.sh
           # Run the script (replace with your script's path)
           ./deploy-to-vm.sh
         env:
