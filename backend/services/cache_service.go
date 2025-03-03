@@ -11,6 +11,15 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// CacheServiceInterface defines the methods that a cache service must implement
+type CacheServiceInterface interface {
+	Get(ctx context.Context, key string, value interface{}) error
+	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
+	Delete(ctx context.Context, key string) error
+	InvalidateProjectCache(projectID uint64)
+	InvalidateUserCache(userID uint)
+}
+
 type CacheService struct {
 	client *redis.Client
 }
