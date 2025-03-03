@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+
+@layer base {
+  :root {
+    /* Brand Colors */
+    --color-primary: #3b82f6;
+    --color-primary-dark: #2563eb;
+    --color-primary-light: #60a5fa;
+    --color-primary-lighter: #93c5fd;
+    --color-primary-lightest: #dbeafe;
+    
+    /* Status Colors */
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-danger: #ef4444;
+    --color-info: #3b82f6;
+
+    /* Neutral Colors */
+    --color-gray-50: #f8fafc;
+    --color-gray-100: #f1f5f9;
+    --color-gray-200: #e2e8f0;
+    --color-gray-300: #cbd5e1;
+    --color-gray-400: #94a3b8;
+    --color-gray-500: #64748b;
+    --color-gray-600: #475569;
+    --color-gray-700: #334155;
+    --color-gray-800: #1e293b;
+    --color-gray-900: #0f172a;
+
+    /* Text Colors */
+    --text-primary: var(--color-gray-900);
+    --text-secondary: var(--color-gray-600);
+    --text-disabled: var(--color-gray-400);
+
+    /* Background Colors */
+    --bg-primary: #ffffff;
+    --bg-secondary: var(--color-gray-50);
+    --bg-tertiary: var(--color-gray-100);
+
+    --menu-active-color: var(--color-primary);
+    --menu-active-background: var(--color-primary-light-4);
+    --menu-hover-color: var(--text-color);
+    --menu-hover-background: var(--background-color);
+  }
+
+  :root[class~='dark'] {
+    /* Dark Mode Colors */
+    --text-primary: var(--color-gray-100);
+    --text-secondary: var(--color-gray-400);
+    --text-disabled: var(--color-gray-600);
+
+    --bg-primary: var(--color-gray-900);
+    --bg-secondary: var(--color-gray-800);
+    --bg-tertiary: var(--color-gray-700);
+
+    --menu-active-color: var(--color-primary);
+    --menu-active-background: var(--color-primary-light-4);
+    --menu-hover-color: var(--text-color);
+    --menu-hover-background: var(--background-color);
+  }
+}
+
+@layer components {
+  /* Button Styles */
+  .btn {
+    @reference inline-flex items-center justify-center px-4 py-2 rounded-md font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+
+  .btn-primary {
+    @reference btn bg-primary text-white hover:bg-primary-dark focus-visible:ring-primary;
+  }
+
+  .btn-secondary {
+    @reference btn bg-gray-light text-gray-dark hover:bg-gray-muted focus-visible:ring-gray;
+  }
+
+  .btn-outline {
+    @reference btn border-2 border-primary text-primary hover:bg-primary/5 focus-visible:ring-primary;
+  }
+
+  /* Card Styles */
+  .card {
+    @reference bg-white rounded-lg shadow-sm overflow-hidden;
+  }
+
+  .card-header {
+    @reference px-6 py-4 border-b border-gray-light;
+  }
+
+  .card-body {
+    @reference px-6 py-4;
+  }
+
+  .card-footer {
+    @reference px-6 py-4 border-t border-gray-light;
+  }
+
+  /* Form Styles */
+  .form-input {
+    @reference block w-full px-3 py-2 border border-gray-muted rounded-md shadow-sm focus:ring-primary focus:border-primary text-sm;
+  }
+
+  .form-label {
+    @reference block text-sm font-medium text-gray-dark mb-1;
+  }
+
+  .form-error {
+    @reference mt-1 text-sm text-error;
+  }
+
+  /* Badge Styles */
+  .badge {
+    @reference inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @reference badge bg-success/10 text-success-dark;
+  }
+
+  .badge-warning {
+    @reference badge bg-warning/10 text-warning-dark;
+  }
+
+  .badge-danger {
+    @reference badge bg-error/10 text-error-dark;
+  }
+
+  /* Progress Bar */
+  .progress-bar {
+    @reference w-full bg-gray-light rounded-full overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @reference h-2 rounded-full transition-all duration-300 ease-in-out;
+  }
+}
+
+/* Base Styles */
+body {
+  @reference min-h-screen bg-gray-light text-gray-dark antialiased;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+/* Table Overrides for Surely Vue */
+.s-table {
+  @reference rounded-lg shadow-sm !important;
+}
+
+.s-table-thead > tr > th {
+  @reference bg-gray-light text-gray-dark font-semibold !important;
+}
+
+.s-table-row:hover > td {
+  @reference bg-gray-light !important;
+}
+
+.s-pagination {
+  @reference mt-4 !important;
+}
+
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(10px);
+  opacity: 0;
+}

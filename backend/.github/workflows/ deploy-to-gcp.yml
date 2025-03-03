@@ -1,0 +1,44 @@
+name: Deploy to Google Cloud
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Go environment
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.23'
+
+      - name: Build and deploy Go application
+        run: |
+          # Build the Go application
+          go build -o main main.go
+
+          # Deploy the Go application to Google Cloud
+          gcloud app deploy --project=$GCP_PROJECT_ID
+
+      - name: Set up Node.js environment
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies for Vue application
+        run: |
+          # Install dependencies for the Vue application
+          npm install
+
+      - name: Build and deploy Vue application
+        run: |
+          # Build the Vue application
+          npm run build
+
+          # Deploy the Vue application to Google Cloud
+          gsutil -m rsync -r dist/ gs://$GCP_BUCKET_NAME/
