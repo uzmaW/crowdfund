@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crowdfund/backend/models"
-	"crowdfund/backend/services"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -71,11 +69,11 @@ func (m *MockCacheService) InvalidateUserCache(userID uint) {
 func TestLogin_Success(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Create mock services
 	mockUserService := new(MockUserService)
 	mockCacheService := new(MockCacheService)
-	
+
 	// Create a mock user with hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	mockUser := models.User{
@@ -84,53 +82,51 @@ func TestLogin_Success(t *testing.T) {
 		Email:    "test@example.com",
 		Password: string(hashedPassword),
 	}
-	
+
 	// Set up expectations
 	mockUserService.On("GetUserByUsername", "testuser").Return(mockUser, nil)
-	
+
 	// Create handler with mock services
-	// Convert mockUserService to the expected type
-	userServicePtr := (*services.UserService)(nil)
-	handler := NewUserHandlers(userServicePtr, mockCacheService)
-	
+	handler := NewUserHandlers(mockUserService, mockCacheService)
+
 	// Create a test router
 	router := gin.New()
 	router.POST("/users/login", handler.Login)
-	
+
 	// Create a login request
 	loginData := map[string]string{
 		"username": "testuser",
 		"password": "password123",
 	}
 	jsonData, _ := json.Marshal(loginData)
-	
+
 	// Create a test request
 	req, _ := http.NewRequest("POST", "/users/login", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create a response recorder
 	w := httptest.NewRecorder()
-	
+
 	// Perform the request
 	router.ServeHTTP(w, req)
-	
+
 	// Check the response
 	assert.Equal(t, http.StatusOK, w.Code)
-	
+
 	// Parse the response
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
-	
+
 	// Check that we got a token
 	assert.NotNil(t, response["token"])
-	
+
 	// Check that we got the user
 	user, ok := response["user"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, float64(1), user["id"])
 	assert.Equal(t, "testuser", user["username"])
 	assert.Equal(t, "test@example.com", user["email"])
-	
+
 	// Verify expectations
 	mockUserService.AssertExpectations(t)
 }
@@ -139,43 +135,41 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_InvalidCredentials(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Create mock services
 	mockUserService := new(MockUserService)
 	mockCacheService := new(MockCacheService)
-	
+
 	// Set up expectations
 	mockUserService.On("GetUserByUsername", "nonexistentuser").Return(models.User{}, errors.New("user not found"))
-	
+
 	// Create handler with mock services
-	// Convert mockUserService to the expected type
-	userServicePtr := (*services.UserService)(nil)
-	handler := NewUserHandlers(userServicePtr, mockCacheService)
-	
+	handler := NewUserHandlers(mockUserService, mockCacheService)
+
 	// Create a test router
 	router := gin.New()
 	router.POST("/users/login", handler.Login)
-	
+
 	// Create a login request
 	loginData := map[string]string{
 		"username": "nonexistentuser",
 		"password": "password123",
 	}
 	jsonData, _ := json.Marshal(loginData)
-	
+
 	// Create a test request
 	req, _ := http.NewRequest("POST", "/users/login", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create a response recorder
 	w := httptest.NewRecorder()
-	
+
 	// Perform the request
 	router.ServeHTTP(w, req)
-	
+
 	// Check the response
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	
+
 	// Verify expectations
 	mockUserService.AssertExpectations(t)
 }
@@ -184,11 +178,11 @@ func TestLogin_InvalidCredentials(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Create mock services
 	mockUserService := new(MockUserService)
 	mockCacheService := new(MockCacheService)
-	
+
 	// Create a mock user with hashed password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
 	mockUser := models.User{
@@ -197,39 +191,37 @@ func TestLogin_WrongPassword(t *testing.T) {
 		Email:    "test@example.com",
 		Password: string(hashedPassword),
 	}
-	
+
 	// Set up expectations
 	mockUserService.On("GetUserByUsername", "testuser").Return(mockUser, nil)
-	
+
 	// Create handler with mock services
-	// Convert mockUserService to the expected type
-	userServicePtr := (*services.UserService)(nil)
-	handler := NewUserHandlers(userServicePtr, mockCacheService)
-	
+	handler := NewUserHandlers(mockUserService, mockCacheService)
+
 	// Create a test router
 	router := gin.New()
 	router.POST("/users/login", handler.Login)
-	
+
 	// Create a login request with wrong password
 	loginData := map[string]string{
 		"username": "testuser",
 		"password": "wrongpassword",
 	}
 	jsonData, _ := json.Marshal(loginData)
-	
+
 	// Create a test request
 	req, _ := http.NewRequest("POST", "/users/login", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create a response recorder
 	w := httptest.NewRecorder()
-	
+
 	// Perform the request
 	router.ServeHTTP(w, req)
-	
+
 	// Check the response
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	
+
 	// Verify expectations
 	mockUserService.AssertExpectations(t)
 }
@@ -238,33 +230,31 @@ func TestLogin_WrongPassword(t *testing.T) {
 func TestLogin_InvalidRequestFormat(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Create mock services
 	mockUserService := new(MockUserService)
 	mockCacheService := new(MockCacheService)
-	
+
 	// Create handler with mock services
-	// Convert mockUserService to the expected type
-	userServicePtr := (*services.UserService)(nil)
-	handler := NewUserHandlers(userServicePtr, mockCacheService)
-	
+	handler := NewUserHandlers(mockUserService, mockCacheService)
+
 	// Create a test router
 	router := gin.New()
 	router.POST("/users/login", handler.Login)
-	
+
 	// Create an invalid JSON request
 	invalidJSON := []byte(`{"username": "testuser", "password":}`)
-	
+
 	// Create a test request
 	req, _ := http.NewRequest("POST", "/users/login", bytes.NewBuffer(invalidJSON))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Create a response recorder
 	w := httptest.NewRecorder()
-	
+
 	// Perform the request
 	router.ServeHTTP(w, req)
-	
+
 	// Check the response
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
